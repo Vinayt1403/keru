@@ -1,0 +1,138 @@
+import pandas as pd
+import difflib
+
+FILE = "sindhudurg_places.csv"
+df = pd.read_csv(FILE)
+
+if "info" not in df.columns:
+    df["info"] = "Information not available."
+
+class LearningModel:
+    def __init__(self):
+        self.memory = set()
+
+    def learn(self, text):
+        self.memory.add(text.lower())
+
+model = LearningModel()
+
+for col in ["location", "name"]:
+    for val in df[col]:
+        model.learn(str(val))
+
+def calculate_accuracy(user_input, matched_output, iterations=6):
+    user_input = user_input.lower().strip()
+    matched_output = matched_output.lower().strip()
+
+    if user_input == matched_output:
+        return 0.95
+    b = 0.0
+    w = 0.0
+
+    xi = difflib.SequenceMatcher(None, user_input, matched_output).ratio()
+    n = xi - w
+
+    for _ in range(iterations):
+        b = b + n          
+        n = 0.5 * n        
+
+    accuracy = b / (b + 1)            # smooth scaling
+    accuracy = min(max(accuracy, 0), 0.94)   
+
+    return round(accuracy, 3)
+
+def smart_search(user_input, df):
+    query = user_input.lower().strip()
+
+    loc_exact = df[df["location"].str.lower() == query]
+
+    if not loc_exact.empty:
+        location_name = loc_exact.iloc[0]["location"]
+        print(f"\n Showing complete information for {location_name}:\n")
+
+        for category in ["Place", "Stay", "Food"]:
+            items = loc_exact[loc_exact["category"] == category]
+            if not items.empty:
+                print(f"--- {category} ---")
+                for _, row in items.iterrows():
+                    print(f" {row['name']}")
+                print()
+
+        acc = calculate_accuracy(query, location_name)
+        print(f" Accuracy (points): {acc}")
+        return df
+
+    locations = df["location"].str.lower().unique().tolist()
+    loc_match = difflib.get_close_matches(query, locations, n=1, cutoff=0.7)
+
+    if loc_match:
+        loc = loc_match[0]
+        loc_df = df[df["location"].str.lower() == loc]
+
+        print(f"\n Showing complete information for {loc.capitalize()}:\n")
+
+        for category in ["Place", "Stay", "Food"]:
+            items = loc_df[loc_df["category"] == category]
+            if not items.empty:
+                print(f"--- {category} ---")
+                for _, row in items.iterrows():
+                    print(f"• {row['name']}")
+                print()
+
+        acc = calculate_accuracy(query, loc)
+        print(f"Accuracy (points): {acc}")
+        return df
+
+    exact = df[df["name"].str.lower() == query]
+
+    if not exact.empty:
+        row = exact.iloc[0]
+        print("\n Selected Result:\n")
+        print(f"Location : {row['location']}")
+        print(f"Category : {row['category']}")
+        print(f"Name     : {row['name']}")
+        print(f"Info     : {row['info']}")
+
+        acc = calculate_accuracy(query, row["name"])
+        print(f"\n Accuracy (points): {acc}")
+        return df
+
+    names = df["name"].str.lower().tolist()
+    best = difflib.get_close_matches(query, names, n=1, cutoff=0.75)
+
+    if best:
+        row = df[df["name"].str.lower() == best[0]].iloc[0]
+        print("\n Auto-corrected Result:\n")
+        print(f"Location : {row['location']}")
+        print(f"Category : {row['category']}")
+        print(f"Name     : {row['name']}")
+        print(f"Info     : {row['info']}")
+
+        acc = calculate_accuracy(query, row["name"])
+        print(f"\n Accuracy (points): {acc}")
+        return df
+
+    partial = df[df["name"].str.lower().str.contains(query)]
+
+    if not partial.empty:
+        print("\n Related Results Found:\n")
+
+        for _, row in partial.iterrows():
+            print(f"Location : {row['location']}")
+            print(f"Category : {row['category']}")
+            print(f"Name     : {row['name']}")
+            print(f"Info     : {row['info']}")
+            print("-" * 30)
+
+        acc = calculate_accuracy(query, partial.iloc[0]["name"])
+        print(f"\n Accuracy (points): {acc}")
+        return df
+
+    print("\n No result found.")
+    return df
+
+while True:
+    user_search = input("\nSearch Sindhudurg location (or type exit): ")
+    if user_search.lower() == "exit":
+        break
+    df = smart_search(user_search, df)
